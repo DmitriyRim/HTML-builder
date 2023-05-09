@@ -1,54 +1,59 @@
-const fs = require('fs');
+const fs = require('fs/promises');
 const path = require('path');
+const { createWriteStream, createReadStream } = require('fs');
 
-fs.mkdir(path.join(__dirname, 'project-dist'), { recursive: true }, () => {
-    fs.readdir(path.join(__dirname, 'project-dist'), (err, data) => {
+fs.mkdir(path.join(__dirname, 'project-dist'), {recursive: true})
+.then(async () => {
+    const arrHtml = {
+        index: await fs.readFile(path.join(__dirname, 'template.html'), 'utf-8')
+    }
+    const tags = (await fs.readdir(path.join(__dirname, 'components'))).map(elem => elem.split('.').slice(0, -1).join(''));
+
+    for(let i = 0; i < tags.length; i++) {
+        arrHtml[tags[i]] = await fs.readFile(path.join(__dirname, 'components', `${tags[i]}.html`), 'utf-8')
+    }
+
+    return arrHtml
+})
+.then(data => {
+    const keys = Object.keys(data);
+    let index = data.index;
+
+    for(let i = 0; i < keys.length; i++) {
+        if(keys[i] === 'index') continue;
+        index = index.replace(`{{${keys[i]}}}`, data[keys[i]])
+    }
+    createWriteStream(path.join(__dirname, 'project-dist', 'index.html')).write(index);
+})
+.then(() => {
+    const outToFile = createWriteStream(path.join(__dirname, 'project-dist', 'style.css'));
+    fs.readdir(path.join(__dirname, 'styles'))
+    .then(data => {
         data.forEach(item => {
-            fs.unlink(path.join(__dirname, 'project-dist', item), () => {});
-        });
+            if(path.extname(item) === '.css'){
+                let read = createReadStream(path.join(__dirname, 'styles', item), 'utf-8');
+                read.on('data', data => {
+                    outToFile.write(data);
+                })
+            };
+        })
+    })
+})
+.then (() => {
+    fs.readdir(path.join(__dirname, 'assets'))
+    .then(async data => {
+        await fs.mkdir(path.join(__dirname, 'project-dist', 'assets'), { recursive: true });
 
-        fs.readdir(path.join(__dirname, 'assets'), (err, data) => {
-            fs.mkdir(path.join(__dirname, 'project-dist', 'assets'), { recursive: true }, () => {
-                data.forEach(item => {
-                    fs.mkdir(path.join(__dirname, 'project-dist', 'assets', item), { recursive: true }, () =>{
-                        fs.readdir(path.join(__dirname, 'assets', item), (err, dataFolder) => {
-                            dataFolder.forEach(file => {
-                                fs.copyFile(path.join(__dirname, 'assets', item, file), path.join(__dirname, 'project-dist', 'assets', item, file), () => {})
-                            })
-                        })
-                    });
+        data.forEach(async item => {
+            await fs.mkdir(path.join(__dirname, 'project-dist', 'assets', item), { recursive: true })
+            .then(() => {
+                fs.readdir(path.join(__dirname, 'assets', item))
+                .then(dataFolder => {
+                    dataFolder.forEach(file => {
+                       require('fs').copyFile(path.join(__dirname, 'assets', item, file), path.join(__dirname, 'project-dist', 'assets', item, file), () => {})
+                    })
                 })
             })
-    
-        });
-    
-        const buildIndex = fs.createWriteStream(path.join(__dirname,'project-dist', 'index.html') , 'utf-8');
-        fs.readFile(path.join(__dirname, 'template.html'), 'utf-8', (err, template) => {
-            fs.readFile(path.join(__dirname, 'components','header.html'), 'utf-8', (err, header) => {
-                fs.readFile(path.join(__dirname, 'components','footer.html'), 'utf-8', (err, footer) => {
-                    fs.readFile(path.join(__dirname, 'components','articles.html'), 'utf-8', (err, articles) => {
-                        fs.readFile(path.join(__dirname, 'components','about.html'), 'utf-8', (err, about) => {
-                            template = template.replace('{{header}}', header);
-                            template = template.replace('{{footer}}', footer);
-                            template = template.replace('{{articles}}', articles);
-                            template = template.replace('{{about}}', about);
-                            buildIndex.write(template);
-                        });
-                    });
-                });
-            });
-        });
-    
-        const outToFile = fs.createWriteStream(path.join(__dirname, 'project-dist', 'style.css'));
-        fs.readdir(path.join(__dirname, 'styles'), (err, data) => {
-            data.forEach(item => {
-                if(path.extname(item) === '.css'){
-                    let read = fs.createReadStream(path.join(__dirname, 'styles', item), 'utf-8');
-                    read.on('data', data => {
-                        outToFile.write(data);
-                    })
-                };
-            })
         })
-    });
+    })
 })
